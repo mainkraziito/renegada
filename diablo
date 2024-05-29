@@ -1,0 +1,156 @@
+// Define los botones del control Xbox One
+define LT = XB1_LT;
+define RT = XB1_RT;
+define LS = XB1_LS;
+define RS = XB1_RS;
+define RB = XB1_RB;
+define LB = XB1_LB;
+define A = XB1_A;
+define B = XB1_B;
+define X = XB1_X;
+define Y = XB1_Y;
+define VIEW = XB1_VIEW;
+define MENU = XB1_MENU;
+define DPAD_UP = XB1_UP;
+
+int autoCombo = 0; // Estado del combo automático (0 = falso, 1 = verdadero)
+int scriptEnabled = 1; // El script está activado por defecto
+int rsPressTime = 0; // Tiempo acumulado de presión de RS
+int rsHeldDuration = 300; // Duración que RS debe mantenerse presionado (en ms)
+int killswitchActivated = FALSE; // Estado del killswitch
+int killswitchToggled = FALSE; // Estado del interruptor del killswitch
+int rtPressTime = 0; // Tiempo acumulado de presión de RT
+int autoComboPaused = 0; // Estado del combo automático pausado (0 = no pausado, 1 = pausado)
+int comboLTActive = 0; // Estado del combo LT (0 = no activo, 1 = activo)
+
+// Combo para la vibración de indicación
+combo rumbleNotify {
+    set_rumble(RUMBLE_A, 100); // Iniciar vibración
+    wait(100); // Duración de la vibración
+    reset_rumble(); // Detener vibración
+}
+
+// Combo para mantener presionado LT cada 500 ms
+combo comboLT {
+    set_val(LT, 100); // Mantener presionado LT
+    wait(500); // Esperar 500 ms
+    set_val(LT, 0); // Soltar LT
+    wait(500); // Esperar otros 500 ms antes de repetir
+}
+
+// Función para indicar cambio en el combo automático
+function CambiarAutoCombo() {
+    autoCombo = !autoCombo;
+    combo_run(rumbleNotify); // Ejecutar combo de vibración
+}
+
+// Función para reiniciar el estado del combo automático
+function ResetAutoCombo() {
+    autoCombo = 0; // Establece el estado del combo automático a apagado
+    combo_stop(AutoCombo); // Detiene el combo automático si está ejecutándose
+}
+
+// Función para reiniciar todos los combos
+function ResetCombos() {
+    ResetAutoCombo();
+    combo_stop(comboLT);
+    comboLTActive = 0; // Reinicia el estado del combo LT
+    // Agrega aquí más funciones de reseteo de combos si es necesario
+}
+
+// Función para activar o desactivar el killswitch
+function CambiarKillswitch() {
+    scriptEnabled = !scriptEnabled;
+    killswitchActivated = !killswitchActivated; // Actualizar el estado del killswitch
+    if (!scriptEnabled) {
+        set_hsb(1, 0, 75); // LED rojo para indicar que el script está desactivado
+        ResetCombos(); // Detener todos los combos si el killswitch se activa
+    } else {
+        set_hsb(1, 75, 75); // LED verde para indicar que el script está activado
+    }
+    if (scriptEnabled) {
+        ResetCombos(); // Reiniciar todos los combos si el killswitch se desactiva
+    }
+}
+
+main {
+    block_rumble(); // Bloquear la vibración del juego
+
+    // Verifica si RS ha sido presionado
+    if (get_val(RS)) {
+        rsPressTime += get_rtime(); // Acumular el tiempo de presión de RS
+        // Verifica si RS ha sido mantenido presionado por la duración requerida
+        if (rsPressTime >= rsHeldDuration && !killswitchToggled) {
+            CambiarKillswitch();
+            killswitchToggled = TRUE; // Marca el interruptor del killswitch como activado
+            combo_run(rumbleNotify); // Ejecutar combo de vibración
+        }
+    } else {
+        rsPressTime = 0; // Reiniciar el tiempo de presión de RS si se suelta
+        if (killswitchToggled) {
+            killswitchToggled = FALSE; // Reinicia el estado del interruptor del killswitch
+        }
+    }
+
+    // Activa el killswitch si se presiona MENU, VIEW o DPAD_UP solo si el script está activado
+    if (scriptEnabled && (event_press(MENU) || event_press(VIEW) || event_press(DPAD_UP))) {
+        CambiarKillswitch();
+    }
+
+    // Verifica si el script está activado antes de ejecutar cualquier acción
+    if (scriptEnabled) {
+        // Activa o desactiva el combo automático con LT
+        if (event_press(LT)) {
+            CambiarAutoCombo();
+            if (!autoCombo) {
+                combo_stop(AutoCombo);
+            }
+        }
+
+        // Desactiva el combo automático con MENU o VIEW y reinicia su estado
+        if (event_press(MENU) || event_press(VIEW)) {
+            ResetAutoCombo();
+        }
+
+        // Pausa el combo automático al presionar Y
+        if (event_press(Y)) {
+            autoComboPaused = 1;
+            combo_stop(AutoCombo);
+            comboLTActive = 1; // Activa el combo LT
+        }
+
+        // Reanuda el combo automático al mantener RT por 2 segundos
+        if (get_val(RT)) {
+            rtPressTime += get_rtime();
+            if (rtPressTime >= 500) {
+                autoComboPaused = 0;
+                comboLTActive = 0; // Desactiva el combo LT
+            }
+        } else {
+            rtPressTime = 0; // Reiniciar el tiempo de presión de RT si se suelta
+        }
+
+        // Ejecuta el combo automático si está activado y no está pausado
+        if (autoCombo && !autoComboPaused) {
+            combo_run(AutoCombo);
+        }
+
+        // Ejecuta el combo LT si está activo
+        if (comboLTActive) {
+            combo_run(comboLT);
+        } else {
+            combo_stop(comboLT);
+        }
+    }
+}
+
+// Definición de combos
+combo AutoCombo {
+    // Presiona LT y RB una vez cada segundo
+    set_val(LT, 100);
+    set_val(RB, 100);
+    wait(40);
+    set_val(LT, 0);
+    set_val(RB, 0);
+    wait(960);
+}
